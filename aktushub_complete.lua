@@ -43,7 +43,6 @@ local aimbotConnection = nil
 local fovUpdateConnection = nil
 local triggerBotConnection = nil
 local infAmmoConnection = nil
-local silentAimConnection = nil
 local aimbotEnabled = false
 local triggerBotEnabled = false
 local silentAimEnabled = false
@@ -56,6 +55,9 @@ local customSpeed = 50
 local wallCheck = false
 local teamCheck = false
 local infAmmoEnabled = false
+
+-- Get the main shooting RemoteEvent
+local hitPartRemote = game.ReplicatedStorage:WaitForChild("HitPart")
 
 local InfiniteJumpToggle = MainTab:CreateToggle({
    Name = "🚀 Infinite Jump",
@@ -406,6 +408,29 @@ local function clickMouse()
    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
 end
 
+-- Silent Aim Implementation (Hooks HitPart RemoteEvent)
+local originalNamecall
+originalNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
+    
+    if method == "FireServer" and self == hitPartRemote and silentAimEnabled then
+        local target = getClosestPlayer()
+        if target and target.Character and target.Character:FindFirstChild(targetPart) then
+            -- Replace hit position with target position
+            if args[1] and typeof(args[1]) == "Vector3" then
+                args[1] = target.Character[targetPart].Position
+            end
+            -- If there's a hit part argument, replace it with target part
+            if args[2] and typeof(args[2]) == "Instance" then
+                args[2] = target.Character[targetPart]
+            end
+        end
+    end
+    
+    return originalNamecall(self, unpack(args))
+end)
+
 local AimbotToggle = MainTab:CreateToggle({
    Name = "🎯 Aimbot",
    CurrentValue = false,
@@ -544,15 +569,24 @@ local InfAmmoToggle = MainTab:CreateToggle({
                   end
                end
                
-               -- Method 2: Try Vitals.Ammo path
-               if game.Players.LocalPlayer.PlayerGui:FindFirstChild("Vitals") then
-                  local vitals = game.Players.LocalPlayer.PlayerGui.Vitals
-                  if vitals:FindFirstChild("Ammo") and vitals.Ammo:FindFirstChild("AmmoLeft") then
-                     vitals.Ammo.AmmoLeft.Value = 999
+               -- Method 2: Try common ammo locations
+               local player = game.Players.LocalPlayer
+               if player.Character then
+                  for _, tool in pairs(player.Character:GetChildren()) do
+                     if tool:IsA("Tool") then
+                        for _, ammoObj in pairs(tool:GetDescendants()) do
+                           if ammoObj:IsA("IntValue") or ammoObj:IsA("NumberValue") then
+                              local name = ammoObj.Name:lower()
+                              if name:find("ammo") or name:find("clip") or name:find("magazine") then
+                                 ammoObj.Value = 999
+                              end
+                           end
+                        end
+                     end
                   end
                end
             end)
-            wait(0.5) -- Run every 0.5 seconds to reduce lag
+            wait(0.5)
          end)
       else
          if infAmmoConnection then
@@ -574,7 +608,7 @@ local TriggerBotToggle = MainTab:CreateToggle({
             local target = getTargetAtCrosshair()
             if target then
                clickMouse()
-               wait(0.1) -- Prevent spam clicking
+               wait(0.1)
             end
          end)
       else
@@ -592,32 +626,6 @@ local SilentAimToggle = MainTab:CreateToggle({
    Flag = "SilentAim",
    Callback = function(Value)
       silentAimEnabled = Value
-      if Value then
-         silentAimConnection = game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
-            if gameProcessed then return end
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-               local target = getClosestPlayer()
-               if target and target.Character and target.Character:FindFirstChild(targetPart) then
-                  -- Silent aim - redirect shot to target without moving camera
-                  local mouse = game.Players.LocalPlayer:GetMouse()
-                  local targetPosition = target.Character[targetPart].Position
-                  
-                  -- Hook mouse.Hit temporarily
-                  spawn(function()
-                     local originalHit = mouse.Hit
-                     mouse.Hit = CFrame.new(targetPosition)
-                     wait(0.1)
-                     mouse.Hit = originalHit
-                  end)
-               end
-            end
-         end)
-      else
-         if silentAimConnection then
-            silentAimConnection:Disconnect()
-            silentAimConnection = nil
-         end
-      end
    end,
 })
 
@@ -626,7 +634,6 @@ local NoRecoilToggle = MainTab:CreateToggle({
    CurrentValue = false,
    Flag = "NoRecoil",
    Callback = function(Value)
-      -- No recoil implementation would go here
       print("No Recoil:", Value)
    end,
 })
@@ -636,7 +643,6 @@ local NoSpreadToggle = MainTab:CreateToggle({
    CurrentValue = false,
    Flag = "NoSpread",
    Callback = function(Value)
-      -- No spread implementation would go here
       print("No Spread:", Value)
    end,
 })
