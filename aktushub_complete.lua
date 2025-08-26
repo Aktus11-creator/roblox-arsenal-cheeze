@@ -59,6 +59,206 @@ local infAmmoEnabled = false
 -- Get the main shooting RemoteEvent
 local hitPartRemote = game.ReplicatedStorage:WaitForChild("HitPart")
 
+-- Team Detection Function
+local function isOnSameTeam(player1, player2)
+   if not teamCheck then return false end
+   
+   if player1.Team and player2.Team then
+      return player1.Team == player2.Team
+   end
+   
+   if player1.TeamColor and player2.TeamColor then
+      return player1.TeamColor == player2.TeamColor
+   end
+   
+   if player1.Character and player2.Character then
+      local shirt1 = player1.Character:FindFirstChild("Shirt")
+      local shirt2 = player2.Character:FindFirstChild("Shirt")
+      
+      if shirt1 and shirt2 then
+         return shirt1.ShirtTemplate == shirt2.ShirtTemplate
+      end
+      
+      if (shirt1 and not shirt2) or (not shirt1 and shirt2) then
+         return false
+      end
+      
+      local bodyColors1 = player1.Character:FindFirstChild("Body Colors")
+      local bodyColors2 = player2.Character:FindFirstChild("Body Colors")
+      if bodyColors1 and bodyColors2 then
+         return bodyColors1.TorsoColor3 == bodyColors2.TorsoColor3
+      end
+   end
+   
+   return false
+end
+
+-- Wall Detection Function
+local function canSeeTarget(targetPlayer)
+   if not wallCheck then return true end
+   
+   local localPlayer = game.Players.LocalPlayer
+   if not localPlayer.Character or not localPlayer.Character:FindFirstChild("Head") then
+      return false
+   end
+   
+   if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild(targetPart) then
+      return false
+   end
+   
+   local origin = localPlayer.Character.Head.Position
+   local targetPosition = targetPlayer.Character[targetPart].Position
+   local direction = (targetPosition - origin).Unit * (targetPosition - origin).Magnitude
+   
+   local raycastParams = RaycastParams.new()
+   raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+   raycastParams.FilterDescendantsInstances = {localPlayer.Character, targetPlayer.Character}
+   
+   local raycastResult = workspace:Raycast(origin, direction, raycastParams)
+   
+   return raycastResult == nil
+end
+
+-- FOV Circle Functions
+local function createFOVCircle()
+   if fovCircle then
+      fovCircle:Remove()
+   end
+   
+   fovCircle = Drawing.new("Circle")
+   fovCircle.Color = Color3.fromRGB(255, 255, 255)
+   fovCircle.Thickness = 2
+   fovCircle.Transparency = 1
+   fovCircle.Filled = false
+   fovCircle.Visible = false
+   fovCircle.Radius = aimbotFOV
+end
+
+local function updateFOVCircle()
+   if fovCircle then
+      local mousePosition = game:GetService("UserInputService"):GetMouseLocation()
+      fovCircle.Position = mousePosition
+      fovCircle.Radius = aimbotFOV
+   end
+end
+
+-- Aimbot Functions
+local function getClosestPlayer()
+   local closestPlayer = nil
+   local shortestDistance = math.huge
+   local localPlayer = game.Players.LocalPlayer
+   local camera = workspace.CurrentCamera
+   
+   for _, player in pairs(game.Players:GetPlayers()) do
+      if player ~= localPlayer and player.Character and player.Character:FindFirstChild(targetPart) then
+         if isOnSameTeam(localPlayer, player) then
+            continue
+         end
+         
+         if not canSeeTarget(player) then
+            continue
+         end
+         
+         local targetPosition = player.Character[targetPart].Position
+         local screenPoint, onScreen = camera:WorldToScreenPoint(targetPosition)
+         
+         if onScreen then
+            local mousePosition = game:GetService("UserInputService"):GetMouseLocation()
+            local distance = (Vector2.new(screenPoint.X, screenPoint.Y) - mousePosition).Magnitude
+            
+            if distance < aimbotFOV and distance < shortestDistance then
+               shortestDistance = distance
+               closestPlayer = player
+            end
+         end
+      end
+   end
+   
+   return closestPlayer
+end
+
+local function getTargetAtCrosshair()
+   local localPlayer = game.Players.LocalPlayer
+   local camera = workspace.CurrentCamera
+   
+   if not localPlayer.Character or not localPlayer.Character:FindFirstChild("Head") then
+      return nil
+   end
+   
+   local origin = camera.CFrame.Position
+   local direction = camera.CFrame.LookVector * 1000
+   
+   local raycastParams = RaycastParams.new()
+   raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+   raycastParams.FilterDescendantsInstances = {localPlayer.Character}
+   
+   local raycastResult = workspace:Raycast(origin, direction, raycastParams)
+   
+   if raycastResult and raycastResult.Instance then
+      local hitPart = raycastResult.Instance
+      local character = hitPart.Parent
+      
+      if character:FindFirstChild("Humanoid") then
+         local player = game.Players:GetPlayerFromCharacter(character)
+         if player and player ~= localPlayer then
+            if not isOnSameTeam(localPlayer, player) then
+               return player
+            end
+         end
+      end
+   end
+   
+   return nil
+end
+
+local function aimAtPlayer(player)
+   if player and player.Character and player.Character:FindFirstChild(targetPart) then
+      local camera = workspace.CurrentCamera
+      local targetPosition = player.Character[targetPart].Position
+      local currentCFrame = camera.CFrame
+      local targetCFrame = CFrame.lookAt(camera.CFrame.Position, targetPosition)
+      
+      camera.CFrame = currentCFrame:Lerp(targetCFrame, 1 / aimbotSmoothing)
+   end
+end
+
+local function clickMouse()
+   local VirtualInputManager = game:GetService("VirtualInputManager")
+   VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+   wait(0.01)
+   VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+end
+
+-- Silent Aim Hook
+local originalNamecall
+originalNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
+    
+    if method == "FireServer" and self == hitPartRemote and silentAimEnabled then
+        local target = getClosestPlayer()
+        if target and target.Character and target.Character:FindFirstChild(targetPart) then
+            if args[1] and typeof(args[1]) == "Vector3" then
+                args[1] = target.Character[targetPart].Position
+            end
+            if args[2] and typeof(args[2]) == "Instance" then
+                args[2] = target.Character[targetPart]
+            end
+        end
+    end
+    
+    return originalNamecall(self, unpack(args))
+end)
+
+-- Helper function to refresh ESP
+local function refreshESP()
+   if ESP.Enabled then
+      ESP.Enabled = false
+      wait(0.1)
+      ESP.Enabled = true
+   end
+end
+
 local InfiniteJumpToggle = MainTab:CreateToggle({
    Name = "🚀 Infinite Jump",
    CurrentValue = false,
@@ -128,15 +328,6 @@ local JumpPowerSlider = MainTab:CreateSlider({
 
 local MainSection2 = MainTab:CreateSection("👁️ Visuals")
 
--- Helper function to refresh ESP
-local function refreshESP()
-   if ESP.Enabled then
-      ESP.Enabled = false
-      wait(0.1)
-      ESP.Enabled = true
-   end
-end
-
 local ESPToggle = MainTab:CreateToggle({
    Name = "👁️ ESP Master",
    CurrentValue = false,
@@ -191,7 +382,6 @@ local DistanceToggle = MainTab:CreateToggle({
    end,
 })
 
--- Color Pickers
 local BoxColorPicker = MainTab:CreateColorPicker({
    Name = "🎨 Box Color",
    Color = Color3.fromRGB(255, 255, 255),
@@ -222,214 +412,7 @@ local NameColorPicker = MainTab:CreateColorPicker({
    end
 })
 
--- Combat Section
 local CombatSection = MainTab:CreateSection("⚔️ Combat")
-
--- Team Detection Function
-local function isOnSameTeam(player1, player2)
-   if not teamCheck then return false end
-   
-   -- Method 1: Check Team property
-   if player1.Team and player2.Team then
-      return player1.Team == player2.Team
-   end
-   
-   -- Method 2: Check TeamColor property
-   if player1.TeamColor and player2.TeamColor then
-      return player1.TeamColor == player2.TeamColor
-   end
-   
-   -- Method 3: Check shirt color/template (main team detection method)
-   if player1.Character and player2.Character then
-      local shirt1 = player1.Character:FindFirstChild("Shirt")
-      local shirt2 = player2.Character:FindFirstChild("Shirt")
-      
-      -- If both have shirts, compare the shirt templates
-      if shirt1 and shirt2 then
-         return shirt1.ShirtTemplate == shirt2.ShirtTemplate
-      end
-      
-      -- If one has a shirt and the other doesn't, they're enemies
-      if (shirt1 and not shirt2) or (not shirt1 and shirt2) then
-         return false
-      end
-      
-      -- Method 4: Check body colors as fallback
-      local bodyColors1 = player1.Character:FindFirstChild("Body Colors")
-      local bodyColors2 = player2.Character:FindFirstChild("Body Colors")
-      if bodyColors1 and bodyColors2 then
-         return bodyColors1.TorsoColor3 == bodyColors2.TorsoColor3
-      end
-   end
-   
-   return false
-end
-
--- Wall Detection Function (ONLY for aimbot)
-local function canSeeTarget(targetPlayer)
-   if not wallCheck then return true end
-   
-   local localPlayer = game.Players.LocalPlayer
-   if not localPlayer.Character or not localPlayer.Character:FindFirstChild("Head") then
-      return false
-   end
-   
-   if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild(targetPart) then
-      return false
-   end
-   
-   local origin = localPlayer.Character.Head.Position
-   local targetPosition = targetPlayer.Character[targetPart].Position
-   local direction = (targetPosition - origin).Unit * (targetPosition - origin).Magnitude
-   
-   local raycastParams = RaycastParams.new()
-   raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-   raycastParams.FilterDescendantsInstances = {localPlayer.Character, targetPlayer.Character}
-   
-   local raycastResult = workspace:Raycast(origin, direction, raycastParams)
-   
-   return raycastResult == nil
-end
-
--- FOV Circle creation
-local function createFOVCircle()
-   if fovCircle then
-      fovCircle:Remove()
-   end
-   
-   fovCircle = Drawing.new("Circle")
-   fovCircle.Color = Color3.fromRGB(255, 255, 255)
-   fovCircle.Thickness = 2
-   fovCircle.Transparency = 1
-   fovCircle.Filled = false
-   fovCircle.Visible = false
-   fovCircle.Radius = aimbotFOV
-end
-
--- Update FOV Circle
-local function updateFOVCircle()
-   if fovCircle then
-      local mousePosition = game:GetService("UserInputService"):GetMouseLocation()
-      fovCircle.Position = mousePosition
-      fovCircle.Radius = aimbotFOV
-   end
-end
-
--- Aimbot functions
-local function getClosestPlayer()
-   local closestPlayer = nil
-   local shortestDistance = math.huge
-   local localPlayer = game.Players.LocalPlayer
-   local camera = workspace.CurrentCamera
-   
-   for _, player in pairs(game.Players:GetPlayers()) do
-      if player ~= localPlayer and player.Character and player.Character:FindFirstChild(targetPart) then
-         -- Check team detection first
-         if isOnSameTeam(localPlayer, player) then
-            continue
-         end
-         
-         -- Check wall detection (ONLY for aimbot)
-         if not canSeeTarget(player) then
-            continue
-         end
-         
-         local targetPosition = player.Character[targetPart].Position
-         local screenPoint, onScreen = camera:WorldToScreenPoint(targetPosition)
-         
-         if onScreen then
-            local mousePosition = game:GetService("UserInputService"):GetMouseLocation()
-            local distance = (Vector2.new(screenPoint.X, screenPoint.Y) - mousePosition).Magnitude
-            
-            if distance < aimbotFOV and distance < shortestDistance then
-               shortestDistance = distance
-               closestPlayer = player
-            end
-         end
-      end
-   end
-   
-   return closestPlayer
-end
-
--- Get target at crosshair (for triggerbot)
-local function getTargetAtCrosshair()
-   local localPlayer = game.Players.LocalPlayer
-   local camera = workspace.CurrentCamera
-   
-   if not localPlayer.Character or not localPlayer.Character:FindFirstChild("Head") then
-      return nil
-   end
-   
-   local origin = camera.CFrame.Position
-   local direction = camera.CFrame.LookVector * 1000
-   
-   local raycastParams = RaycastParams.new()
-   raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-   raycastParams.FilterDescendantsInstances = {localPlayer.Character}
-   
-   local raycastResult = workspace:Raycast(origin, direction, raycastParams)
-   
-   if raycastResult and raycastResult.Instance then
-      local hitPart = raycastResult.Instance
-      local character = hitPart.Parent
-      
-      if character:FindFirstChild("Humanoid") then
-         local player = game.Players:GetPlayerFromCharacter(character)
-         if player and player ~= localPlayer then
-            -- Check team detection for triggerbot too
-            if not isOnSameTeam(localPlayer, player) then
-               return player
-            end
-         end
-      end
-   end
-   
-   return nil
-end
-
-local function aimAtPlayer(player)
-   if player and player.Character and player.Character:FindFirstChild(targetPart) then
-      local camera = workspace.CurrentCamera
-      local targetPosition = player.Character[targetPart].Position
-      local currentCFrame = camera.CFrame
-      local targetCFrame = CFrame.lookAt(camera.CFrame.Position, targetPosition)
-      
-      -- Smooth aiming
-      camera.CFrame = currentCFrame:Lerp(targetCFrame, 1 / aimbotSmoothing)
-   end
-end
-
--- Simulate mouse click for triggerbot
-local function clickMouse()
-   local VirtualInputManager = game:GetService("VirtualInputManager")
-   VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-   wait(0.01)
-   VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-end
-
--- Silent Aim Implementation (Hooks HitPart RemoteEvent)
-local originalNamecall
-originalNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-    local method = getnamecallmethod()
-    local args = {...}
-    
-    if method == "FireServer" and self == hitPartRemote and silentAimEnabled then
-        local target = getClosestPlayer()
-        if target and target.Character and target.Character:FindFirstChild(targetPart) then
-            -- Replace hit position with target position
-            if args[1] and typeof(args[1]) == "Vector3" then
-                args[1] = target.Character[targetPart].Position
-            end
-            -- If there's a hit part argument, replace it with target part
-            if args[2] and typeof(args[2]) == "Instance" then
-                args[2] = target.Character[targetPart]
-            end
-        end
-    end
-    
-    return originalNamecall(self, unpack(args))
-end)
 
 local AimbotToggle = MainTab:CreateToggle({
    Name = "🎯 Aimbot",
@@ -441,7 +424,7 @@ local AimbotToggle = MainTab:CreateToggle({
          createFOVCircle()
          
          aimbotConnection = game:GetService("RunService").RenderStepped:Connect(function()
-            if game:GetService("UserInputService"):IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then -- Right mouse button
+            if game:GetService("UserInputService"):IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
                local target = getClosestPlayer()
                if target then
                   aimAtPlayer(target)
@@ -475,7 +458,6 @@ local TeamCheckToggle = MainTab:CreateToggle({
    Flag = "TeamCheck",
    Callback = function(Value)
       teamCheck = Value
-      -- Apply team check to ESP as well
       ESP.Teamcheck = Value
    end,
 })
@@ -555,7 +537,6 @@ local InfAmmoToggle = MainTab:CreateToggle({
       if Value then
          infAmmoConnection = game:GetService("RunService").Heartbeat:Connect(function()
             pcall(function()
-               -- Method 1: Try GUI.Client.Variables path
                if game.Players.LocalPlayer.PlayerGui:FindFirstChild("GUI") then
                   local gui = game.Players.LocalPlayer.PlayerGui.GUI
                   if gui:FindFirstChild("Client") and gui.Client:FindFirstChild("Variables") then
@@ -569,7 +550,6 @@ local InfAmmoToggle = MainTab:CreateToggle({
                   end
                end
                
-               -- Method 2: Try common ammo locations
                local player = game.Players.LocalPlayer
                if player.Character then
                   for _, tool in pairs(player.Character:GetChildren()) do
@@ -647,6 +627,5 @@ local NoSpreadToggle = MainTab:CreateToggle({
    end,
 })
 
--- Set default ESP settings
 ESP.BoxType = "Corner Box Esp"
 ESP.TracerPosition = "Bottom"
