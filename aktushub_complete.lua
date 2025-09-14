@@ -1,8 +1,8 @@
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Window = Rayfield:CreateWindow({
-   Name = "AktusHUB v1.0",
+   Name = "AktusHUB v1.1",
    Icon = 0,
-   LoadingTitle = "AktusHUB v 1.0 - loading",
+   LoadingTitle = "AktusHUB v 1.1 - loading",
    LoadingSubtitle = "by Aktus1_1",
    ShowText = "Rayfield",
    Theme = "Default",
@@ -19,121 +19,251 @@ local Window = Rayfield:CreateWindow({
       Invite = "HjCxZ4jyxr",
       RememberJoins = true
    },
-   KeySystem = false,
-   KeySettings = {
-      Title = "AktusHUB | Key",
-      Subtitle = "Key on discord",
-      Note = "Join the discord to get the key!",
-      FileName = "qwertyabcd",
-      SaveKey = true,
-      GrabKeyFromSite = true,
-      Key = {"https://pastebin.com/raw/mYbw328T"}
-   }
+   KeySystem = false
 })
 
 -- Load ESP Library
 local ESP = loadstring(game:HttpGet("https://raw.githubusercontent.com/linemaster2/esp-library/main/library.lua"))();
 
+-- Services
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local MainTab = Window:CreateTab("🏠 Main", nil)
-local MainSection = MainTab:CreateSection("🏃 Player")
+local MovementTab = Window:CreateTab("🏃 Movement", nil)
+local CombatTab = Window:CreateTab("⚔️ Combat", nil)
+local MiscTab = Window:CreateTab("🔧 Misc", nil)
 
 -- Variables
-local infiniteJumpConnection = nil
-local aimbotConnection = nil
-local fovUpdateConnection = nil
-local triggerBotConnection = nil
-local infAmmoConnection = nil
-local silentAimConnection = nil
-local aimbotEnabled = false
-local triggerBotEnabled = false
-local silentAimEnabled = false
-local aimbotFOV = 90
-local aimbotSmoothing = 1
-local targetPart = "Head"
-local fovCircle = nil
-local originalWalkSpeed = 16
-local customSpeed = 50
-local wallCheck = false
-local teamCheck = false
-local infAmmoEnabled = false
+local LocalPlayer = Players.LocalPlayer
+local connections = {}
+local settings = {
+    aimbot = {
+        enabled = false,
+        fov = 90,
+        smoothing = 1,
+        targetPart = "Head",
+        wallCheck = false,
+        teamCheck = false
+    },
+    movement = {
+        speed = 50,
+        jumpPower = 50,
+        fly = false,
+        noclip = false
+    },
+    visuals = {
+        esp = false,
+        showFOV = false
+    },
+    combat = {
+        triggerBot = false,
+        silentAim = false,
+        rapidFire = false,
+        infAmmo = false
+    }
+}
 
-local InfiniteJumpToggle = MainTab:CreateToggle({
+local fovCircle = nil
+local originalValues = {}
+
+-- Utility Functions
+local function safeCall(func, ...)
+    local success, result = pcall(func, ...)
+    if not success then
+        warn("Error: " .. tostring(result))
+    end
+    return success, result
+end
+
+local function getCharacter()
+    return LocalPlayer.Character
+end
+
+local function getHumanoid()
+    local character = getCharacter()
+    return character and character:FindFirstChild("Humanoid")
+end
+
+local function getRootPart()
+    local character = getCharacter()
+    return character and character:FindFirstChild("HumanoidRootPart")
+end
+
+-- Movement Section
+local MovementSection = MovementTab:CreateSection("🏃 Basic Movement")
+
+local InfiniteJumpToggle = MovementTab:CreateToggle({
    Name = "🚀 Infinite Jump",
    CurrentValue = false,
    Flag = "InfiniteJumpToggle",
    Callback = function(Value)
       if Value then
-         infiniteJumpConnection = game:GetService("UserInputService").JumpRequest:Connect(function()
-            if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
-               game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping")
+         connections.infiniteJump = UserInputService.JumpRequest:Connect(function()
+            local humanoid = getHumanoid()
+            if humanoid then
+               humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
             end
          end)
       else
-         if infiniteJumpConnection then
-            infiniteJumpConnection:Disconnect()
-            infiniteJumpConnection = nil
+         if connections.infiniteJump then
+            connections.infiniteJump:Disconnect()
+            connections.infiniteJump = nil
          end
       end
    end,
 })
 
-local SpeedToggle = MainTab:CreateToggle({
+local SpeedToggle = MovementTab:CreateToggle({
    Name = "⚡ Speed Hack",
    CurrentValue = false,
    Flag = "SpeedToggle",
    Callback = function(Value)
-      if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
+      local humanoid = getHumanoid()
+      if humanoid then
          if Value then
-            originalWalkSpeed = game.Players.LocalPlayer.Character.Humanoid.WalkSpeed
-            game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = customSpeed
+            originalValues.walkSpeed = humanoid.WalkSpeed
+            humanoid.WalkSpeed = settings.movement.speed
          else
-            game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = originalWalkSpeed
+            humanoid.WalkSpeed = originalValues.walkSpeed or 16
          end
       end
    end,
 })
 
-local SpeedSlider = MainTab:CreateSlider({
+local SpeedSlider = MovementTab:CreateSlider({
    Name = "⚡ Walk Speed",
-   Range = {16, 200},
+   Range = {16, 500},
    Increment = 1,
    Suffix = " Speed",
    CurrentValue = 50,
    Flag = "WalkSpeed",
    Callback = function(Value)
-      customSpeed = Value
-      if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
-         if SpeedToggle.CurrentValue then
-            game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = Value
-         end
+      settings.movement.speed = Value
+      local humanoid = getHumanoid()
+      if humanoid and SpeedToggle.CurrentValue then
+         humanoid.WalkSpeed = Value
       end
    end,
 })
 
-local JumpPowerSlider = MainTab:CreateSlider({
+local JumpPowerSlider = MovementTab:CreateSlider({
    Name = "🦘 Jump Power",
-   Range = {50, 200},
+   Range = {50, 500},
    Increment = 5,
    Suffix = " Power",
    CurrentValue = 50,
    Flag = "JumpPower",
    Callback = function(Value)
-      if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
-         game.Players.LocalPlayer.Character.Humanoid.JumpPower = Value
+      settings.movement.jumpPower = Value
+      local humanoid = getHumanoid()
+      if humanoid then
+         humanoid.JumpPower = Value
       end
    end,
 })
 
-local MainSection2 = MainTab:CreateSection("👁️ Visuals")
+-- Advanced Movement Section
+local AdvancedMovementSection = MovementTab:CreateSection("🚁 Advanced Movement")
 
--- Helper function to refresh ESP
-local function refreshESP()
-   if ESP.Enabled then
-      ESP.Enabled = false
-      wait(0.1)
-      ESP.Enabled = true
-   end
-end
+local FlyToggle = MovementTab:CreateToggle({
+   Name = "🚁 Fly",
+   CurrentValue = false,
+   Flag = "FlyToggle",
+   Callback = function(Value)
+      settings.movement.fly = Value
+      if Value then
+         local rootPart = getRootPart()
+         if rootPart then
+            -- Create BodyVelocity for fly
+            local bodyVelocity = Instance.new("BodyVelocity")
+            bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+            bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+            bodyVelocity.Parent = rootPart
+            
+            connections.fly = RunService.Heartbeat:Connect(function()
+               if not settings.movement.fly then return end
+               local camera = workspace.CurrentCamera
+               local moveVector = getHumanoid().MoveDirection
+               
+               local velocity = Vector3.new(0, 0, 0)
+               if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                  velocity = velocity + camera.CFrame.LookVector
+               end
+               if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                  velocity = velocity - camera.CFrame.LookVector
+               end
+               if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                  velocity = velocity - camera.CFrame.RightVector
+               end
+               if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                  velocity = velocity + camera.CFrame.RightVector
+               end
+               if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                  velocity = velocity + Vector3.new(0, 1, 0)
+               end
+               if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                  velocity = velocity - Vector3.new(0, 1, 0)
+               end
+               
+               bodyVelocity.Velocity = velocity * settings.movement.speed
+            end)
+         end
+      else
+         if connections.fly then
+            connections.fly:Disconnect()
+            connections.fly = nil
+         end
+         local rootPart = getRootPart()
+         if rootPart then
+            local bodyVelocity = rootPart:FindFirstChild("BodyVelocity")
+            if bodyVelocity then
+               bodyVelocity:Destroy()
+            end
+         end
+      end
+   end,
+})
+
+local NoClipToggle = MovementTab:CreateToggle({
+   Name = "👻 NoClip",
+   CurrentValue = false,
+   Flag = "NoClipToggle",
+   Callback = function(Value)
+      settings.movement.noclip = Value
+      if Value then
+         connections.noclip = RunService.Stepped:Connect(function()
+            local character = getCharacter()
+            if character then
+               for _, part in pairs(character:GetChildren()) do
+                  if part:IsA("BasePart") then
+                     part.CanCollide = false
+                  end
+               end
+            end
+         end)
+      else
+         if connections.noclip then
+            connections.noclip:Disconnect()
+            connections.noclip = nil
+         end
+         local character = getCharacter()
+         if character then
+            for _, part in pairs(character:GetChildren()) do
+               if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                  part.CanCollide = true
+               end
+            end
+         end
+      end
+   end,
+})
+
+-- Visuals Section (Main Tab)
+local MainSection = MainTab:CreateSection("👁️ Visuals")
 
 local ESPToggle = MainTab:CreateToggle({
    Name = "👁️ ESP Master",
@@ -141,6 +271,7 @@ local ESPToggle = MainTab:CreateToggle({
    Flag = "ESPMaster",
    Callback = function(Value)
       ESP.Enabled = Value
+      settings.visuals.esp = Value
    end,
 })
 
@@ -180,116 +311,51 @@ local TracerToggle = MainTab:CreateToggle({
    end,
 })
 
-local DistanceToggle = MainTab:CreateToggle({
-   Name = "📏 Show Distance",
-   CurrentValue = false,
-   Flag = "ESPDistance",
-   Callback = function(Value)
-      ESP.ShowDistance = Value
-   end,
-})
-
--- Color Pickers
-local BoxColorPicker = MainTab:CreateColorPicker({
-   Name = "🎨 Box Color",
-   Color = Color3.fromRGB(255, 255, 255),
-   Flag = "BoxColor",
-   Callback = function(Value)
-      ESP.BoxColor = Value
-      refreshESP()
-   end
-})
-
-local TracerColorPicker = MainTab:CreateColorPicker({
-   Name = "🎨 Tracer Color",
-   Color = Color3.fromRGB(255, 255, 255),
-   Flag = "TracerColor",
-   Callback = function(Value)
-      ESP.TracerColor = Value
-      refreshESP()
-   end
-})
-
-local NameColorPicker = MainTab:CreateColorPicker({
-   Name = "🎨 Name Color",
-   Color = Color3.fromRGB(255, 255, 255),
-   Flag = "NameColor",
-   Callback = function(Value)
-      ESP.NameColor = Value
-      refreshESP()
-   end
-})
-
 -- Combat Section
-local CombatSection = MainTab:CreateSection("⚔️ Combat")
+local CombatSection = CombatTab:CreateSection("⚔️ Combat")
 
 -- Team Detection Function
 local function isOnSameTeam(player1, player2)
-   if not teamCheck then return false end
+   if not settings.aimbot.teamCheck then return false end
    
-   -- Method 1: Check Team property
    if player1.Team and player2.Team then
       return player1.Team == player2.Team
    end
    
-   -- Method 2: Check TeamColor property
    if player1.TeamColor and player2.TeamColor then
       return player1.TeamColor == player2.TeamColor
-   end
-   
-   -- Method 3: Check shirt color/template (main team detection method)
-   if player1.Character and player2.Character then
-      local shirt1 = player1.Character:FindFirstChild("Shirt")
-      local shirt2 = player2.Character:FindFirstChild("Shirt")
-      
-      -- If both have shirts, compare the shirt templates
-      if shirt1 and shirt2 then
-         return shirt1.ShirtTemplate == shirt2.ShirtTemplate
-      end
-      
-      -- If one has a shirt and the other doesn't, they're enemies
-      if (shirt1 and not shirt2) or (not shirt1 and shirt2) then
-         return false
-      end
-      
-      -- Method 4: Check body colors as fallback
-      local bodyColors1 = player1.Character:FindFirstChild("Body Colors")
-      local bodyColors2 = player2.Character:FindFirstChild("Body Colors")
-      if bodyColors1 and bodyColors2 then
-         return bodyColors1.TorsoColor3 == bodyColors2.TorsoColor3
-      end
    end
    
    return false
 end
 
--- Wall Detection Function (ONLY for aimbot)
+-- Wall Detection Function
 local function canSeeTarget(targetPlayer)
-   if not wallCheck then return true end
+   if not settings.aimbot.wallCheck then return true end
    
-   local localPlayer = game.Players.LocalPlayer
-   if not localPlayer.Character or not localPlayer.Character:FindFirstChild("Head") then
+   local character = getCharacter()
+   if not character or not character:FindFirstChild("Head") then
       return false
    end
    
-   if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild(targetPart) then
+   if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild(settings.aimbot.targetPart) then
       return false
    end
    
-   local origin = localPlayer.Character.Head.Position
-   local targetPosition = targetPlayer.Character[targetPart].Position
-   local direction = (targetPosition - origin).Unit * (targetPosition - origin).Magnitude
+   local origin = character.Head.Position
+   local targetPosition = targetPlayer.Character[settings.aimbot.targetPart].Position
+   local direction = (targetPosition - origin)
    
    local raycastParams = RaycastParams.new()
    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-   raycastParams.FilterDescendantsInstances = {localPlayer.Character, targetPlayer.Character}
+   raycastParams.FilterDescendantsInstances = {character, targetPlayer.Character}
    
    local raycastResult = workspace:Raycast(origin, direction, raycastParams)
    
    return raycastResult == nil
 end
 
--- FOV Circle creation
+-- FOV Circle
 local function createFOVCircle()
    if fovCircle then
       fovCircle:Remove()
@@ -300,46 +366,42 @@ local function createFOVCircle()
    fovCircle.Thickness = 2
    fovCircle.Transparency = 1
    fovCircle.Filled = false
-   fovCircle.Visible = false
-   fovCircle.Radius = aimbotFOV
+   fovCircle.Visible = settings.visuals.showFOV
+   fovCircle.Radius = settings.aimbot.fov
 end
 
--- Update FOV Circle
 local function updateFOVCircle()
    if fovCircle then
-      local mousePosition = game:GetService("UserInputService"):GetMouseLocation()
+      local mousePosition = UserInputService:GetMouseLocation()
       fovCircle.Position = mousePosition
-      fovCircle.Radius = aimbotFOV
+      fovCircle.Radius = settings.aimbot.fov
    end
 end
 
--- Aimbot functions
+-- Aimbot Functions
 local function getClosestPlayer()
    local closestPlayer = nil
    local shortestDistance = math.huge
-   local localPlayer = game.Players.LocalPlayer
    local camera = workspace.CurrentCamera
    
-   for _, player in pairs(game.Players:GetPlayers()) do
-      if player ~= localPlayer and player.Character and player.Character:FindFirstChild(targetPart) then
-         -- Check team detection first
-         if isOnSameTeam(localPlayer, player) then
+   for _, player in pairs(Players:GetPlayers()) do
+      if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild(settings.aimbot.targetPart) then
+         if isOnSameTeam(LocalPlayer, player) then
             continue
          end
          
-         -- Check wall detection (ONLY for aimbot)
          if not canSeeTarget(player) then
             continue
          end
          
-         local targetPosition = player.Character[targetPart].Position
+         local targetPosition = player.Character[settings.aimbot.targetPart].Position
          local screenPoint, onScreen = camera:WorldToScreenPoint(targetPosition)
          
          if onScreen then
-            local mousePosition = game:GetService("UserInputService"):GetMouseLocation()
+            local mousePosition = UserInputService:GetMouseLocation()
             local distance = (Vector2.new(screenPoint.X, screenPoint.Y) - mousePosition).Magnitude
             
-            if distance < aimbotFOV and distance < shortestDistance then
+            if distance < settings.aimbot.fov and distance < shortestDistance then
                shortestDistance = distance
                closestPlayer = player
             end
@@ -350,73 +412,29 @@ local function getClosestPlayer()
    return closestPlayer
 end
 
--- Get target at crosshair (for triggerbot)
-local function getTargetAtCrosshair()
-   local localPlayer = game.Players.LocalPlayer
-   local camera = workspace.CurrentCamera
-   
-   if not localPlayer.Character or not localPlayer.Character:FindFirstChild("Head") then
-      return nil
-   end
-   
-   local origin = camera.CFrame.Position
-   local direction = camera.CFrame.LookVector * 1000
-   
-   local raycastParams = RaycastParams.new()
-   raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-   raycastParams.FilterDescendantsInstances = {localPlayer.Character}
-   
-   local raycastResult = workspace:Raycast(origin, direction, raycastParams)
-   
-   if raycastResult and raycastResult.Instance then
-      local hitPart = raycastResult.Instance
-      local character = hitPart.Parent
-      
-      if character:FindFirstChild("Humanoid") then
-         local player = game.Players:GetPlayerFromCharacter(character)
-         if player and player ~= localPlayer then
-            -- Check team detection for triggerbot too
-            if not isOnSameTeam(localPlayer, player) then
-               return player
-            end
-         end
-      end
-   end
-   
-   return nil
-end
-
 local function aimAtPlayer(player)
-   if player and player.Character and player.Character:FindFirstChild(targetPart) then
+   if player and player.Character and player.Character:FindFirstChild(settings.aimbot.targetPart) then
       local camera = workspace.CurrentCamera
-      local targetPosition = player.Character[targetPart].Position
+      local targetPosition = player.Character[settings.aimbot.targetPart].Position
       local currentCFrame = camera.CFrame
       local targetCFrame = CFrame.lookAt(camera.CFrame.Position, targetPosition)
       
-      -- Smooth aiming
-      camera.CFrame = currentCFrame:Lerp(targetCFrame, 1 / aimbotSmoothing)
+      camera.CFrame = currentCFrame:Lerp(targetCFrame, 1 / settings.aimbot.smoothing)
    end
 end
 
--- Simulate mouse click for triggerbot
-local function clickMouse()
-   local VirtualInputManager = game:GetService("VirtualInputManager")
-   VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-   wait(0.01)
-   VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-end
-
-local AimbotToggle = MainTab:CreateToggle({
+-- Combat Toggles
+local AimbotToggle = CombatTab:CreateToggle({
    Name = "🎯 Aimbot",
    CurrentValue = false,
    Flag = "AimbotToggle",
    Callback = function(Value)
-      aimbotEnabled = Value
+      settings.aimbot.enabled = Value
       if Value then
          createFOVCircle()
          
-         aimbotConnection = game:GetService("RunService").RenderStepped:Connect(function()
-            if game:GetService("UserInputService"):IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then -- Right mouse button
+         connections.aimbot = RunService.RenderStepped:Connect(function()
+            if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
                local target = getClosestPlayer()
                if target then
                   aimAtPlayer(target)
@@ -424,17 +442,15 @@ local AimbotToggle = MainTab:CreateToggle({
             end
          end)
          
-         fovUpdateConnection = game:GetService("RunService").RenderStepped:Connect(function()
-            updateFOVCircle()
-         end)
+         connections.fovUpdate = RunService.RenderStepped:Connect(updateFOVCircle)
       else
-         if aimbotConnection then
-            aimbotConnection:Disconnect()
-            aimbotConnection = nil
+         if connections.aimbot then
+            connections.aimbot:Disconnect()
+            connections.aimbot = nil
          end
-         if fovUpdateConnection then
-            fovUpdateConnection:Disconnect()
-            fovUpdateConnection = nil
+         if connections.fovUpdate then
+            connections.fovUpdate:Disconnect()
+            connections.fovUpdate = nil
          end
          if fovCircle then
             fovCircle:Remove()
@@ -444,49 +460,166 @@ local AimbotToggle = MainTab:CreateToggle({
    end,
 })
 
-local TeamCheckToggle = MainTab:CreateToggle({
+local TriggerBotToggle = CombatTab:CreateToggle({
+   Name = "🔫 Trigger Bot",
+   CurrentValue = false,
+   Flag = "TriggerBot",
+   Callback = function(Value)
+      settings.combat.triggerBot = Value
+      if Value then
+         connections.triggerBot = RunService.RenderStepped:Connect(function()
+            local camera = workspace.CurrentCamera
+            local origin = camera.CFrame.Position
+            local direction = camera.CFrame.LookVector * 1000
+            
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+            raycastParams.FilterDescendantsInstances = {getCharacter()}
+            
+            local raycastResult = workspace:Raycast(origin, direction, raycastParams)
+            
+            if raycastResult and raycastResult.Instance then
+               local hitPart = raycastResult.Instance
+               local character = hitPart.Parent
+               
+               if character:FindFirstChild("Humanoid") then
+                  local player = Players:GetPlayerFromCharacter(character)
+                  if player and player ~= LocalPlayer and not isOnSameTeam(LocalPlayer, player) then
+                     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+                     wait(0.01)
+                     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                     wait(0.1)
+                  end
+               end
+            end
+         end)
+      else
+         if connections.triggerBot then
+            connections.triggerBot:Disconnect()
+            connections.triggerBot = nil
+         end
+      end
+   end,
+})
+
+-- Improved Silent Aim using remote hooking
+local function hookRemotes()
+   local mt = getrawmetatable(game)
+   local oldNamecall = mt.__namecall
+   
+   setreadonly(mt, false)
+   mt.__namecall = function(self, ...)
+      local method = getnamecallmethod()
+      local args = {...}
+      
+      if method == "FireServer" and settings.combat.silentAim then
+         local target = getClosestPlayer()
+         if target and target.Character and target.Character:FindFirstChild(settings.aimbot.targetPart) then
+            -- Modify the first Vector3 argument (usually the target position)
+            for i, arg in ipairs(args) do
+               if typeof(arg) == "Vector3" then
+                  args[i] = target.Character[settings.aimbot.targetPart].Position
+                  break
+               end
+            end
+         end
+      end
+      
+      return oldNamecall(self, unpack(args))
+   end
+   setreadonly(mt, true)
+end
+
+local SilentAimToggle = CombatTab:CreateToggle({
+   Name = "🤫 Silent Aim",
+   CurrentValue = false,
+   Flag = "SilentAim",
+   Callback = function(Value)
+      settings.combat.silentAim = Value
+      if Value then
+         safeCall(hookRemotes)
+      end
+   end,
+})
+
+local InfAmmoToggle = CombatTab:CreateToggle({
+   Name = "🔫 Infinite Ammo",
+   CurrentValue = false,
+   Flag = "InfAmmo",
+   Callback = function(Value)
+      settings.combat.infAmmo = Value
+      if Value then
+         connections.infAmmo = RunService.Heartbeat:Connect(function()
+            safeCall(function()
+               -- Multiple methods to find ammo values
+               local playerGui = LocalPlayer.PlayerGui
+               
+               -- Method 1: Common GUI paths
+               for _, guiName in pairs({"GUI", "Vitals", "HUD", "Interface"}) do
+                  local gui = playerGui:FindFirstChild(guiName)
+                  if gui then
+                     for _, ammoName in pairs({"ammocount", "ammo", "Ammo", "AmmoLeft", "currentAmmo"}) do
+                        local ammoObj = gui:FindFirstChild(ammoName, true)
+                        if ammoObj and ammoObj.Value then
+                           ammoObj.Value = 999
+                        end
+                     end
+                  end
+               end
+               
+               -- Method 2: Check ReplicatedStorage for ammo values
+               for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
+                  if obj.Name:lower():find("ammo") and obj:IsA("IntValue") or obj:IsA("NumberValue") then
+                     obj.Value = 999
+                  end
+               end
+            end)
+            wait(0.5)
+         end)
+      else
+         if connections.infAmmo then
+            connections.infAmmo:Disconnect()
+            connections.infAmmo = nil
+         end
+      end
+   end,
+})
+
+-- Settings Section
+local SettingsSection = CombatTab:CreateSection("⚙️ Aimbot Settings")
+
+local TeamCheckToggle = CombatTab:CreateToggle({
    Name = "👥 Team Check",
    CurrentValue = false,
    Flag = "TeamCheck",
    Callback = function(Value)
-      teamCheck = Value
-      -- Apply team check to ESP as well
+      settings.aimbot.teamCheck = Value
       ESP.Teamcheck = Value
    end,
 })
 
-local WallCheckToggle = MainTab:CreateToggle({
-   Name = "🧱 Wall Check (Aimbot Only)",
+local WallCheckToggle = CombatTab:CreateToggle({
+   Name = "🧱 Wall Check",
    CurrentValue = false,
    Flag = "WallCheck",
    Callback = function(Value)
-      wallCheck = Value
+      settings.aimbot.wallCheck = Value
    end,
 })
 
-local ShowFOVToggle = MainTab:CreateToggle({
+local ShowFOVToggle = CombatTab:CreateToggle({
    Name = "👁️ Show FOV Circle",
    CurrentValue = false,
    Flag = "ShowFOV",
    Callback = function(Value)
+      settings.visuals.showFOV = Value
       if fovCircle then
          fovCircle.Visible = Value
       end
    end,
 })
 
-local FOVColorPicker = MainTab:CreateColorPicker({
-   Name = "🎨 FOV Color",
-   Color = Color3.fromRGB(255, 255, 255),
-   Flag = "FOVColor",
-   Callback = function(Value)
-      if fovCircle then
-         fovCircle.Color = Value
-      end
-   end
-})
-
-local AimbotFOVSlider = MainTab:CreateSlider({
+local AimbotFOVSlider = CombatTab:CreateSlider({
    Name = "🎯 Aimbot FOV",
    Range = {10, 360},
    Increment = 5,
@@ -494,153 +627,106 @@ local AimbotFOVSlider = MainTab:CreateSlider({
    CurrentValue = 90,
    Flag = "AimbotFOV",
    Callback = function(Value)
-      aimbotFOV = Value
+      settings.aimbot.fov = Value
    end,
 })
 
-local AimbotSmoothSlider = MainTab:CreateSlider({
+local AimbotSmoothSlider = CombatTab:CreateSlider({
    Name = "🎯 Aimbot Smoothing",
-   Range = {1, 10},
+   Range = {1, 20},
    Increment = 0.1,
    Suffix = "x",
    CurrentValue = 1,
    Flag = "AimbotSmooth",
    Callback = function(Value)
-      aimbotSmoothing = Value
+      settings.aimbot.smoothing = Value
    end,
 })
 
-local TargetPartDropdown = MainTab:CreateDropdown({
+local TargetPartDropdown = CombatTab:CreateDropdown({
    Name = "🎯 Target Part",
    Options = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"},
    CurrentOption = {"Head"},
    MultipleOptions = false,
    Flag = "TargetPart",
    Callback = function(Option)
-      targetPart = Option[1]
+      settings.aimbot.targetPart = Option[1]
    end,
 })
 
-local InfAmmoToggle = MainTab:CreateToggle({
-   Name = "🔫 Infinite Ammo",
+-- Misc Section
+local MiscSection = MiscTab:CreateSection("🔧 Miscellaneous")
+
+local AntiKickToggle = MiscTab:CreateToggle({
+   Name = "🛡️ Anti Kick",
    CurrentValue = false,
-   Flag = "InfAmmo",
+   Flag = "AntiKick",
    Callback = function(Value)
-      infAmmoEnabled = Value
       if Value then
-         infAmmoConnection = game:GetService("RunService").Heartbeat:Connect(function()
-            pcall(function()
-               -- Method 1: Try GUI.Client.Variables path
-               if game.Players.LocalPlayer.PlayerGui:FindFirstChild("GUI") then
-                  local gui = game.Players.LocalPlayer.PlayerGui.GUI
-                  if gui:FindFirstChild("Client") and gui.Client:FindFirstChild("Variables") then
-                     local vars = gui.Client.Variables
-                     if vars:FindFirstChild("ammocount") then
-                        vars.ammocount.Value = 999
-                     end
-                     if vars:FindFirstChild("ammocount2") then
-                        vars.ammocount2.Value = 999
-                     end
-                  end
-               end
-               
-               -- Method 2: Try Vitals.Ammo path
-               if game.Players.LocalPlayer.PlayerGui:FindFirstChild("Vitals") then
-                  local vitals = game.Players.LocalPlayer.PlayerGui.Vitals
-                  if vitals:FindFirstChild("Ammo") and vitals.Ammo:FindFirstChild("AmmoLeft") then
-                     vitals.Ammo.AmmoLeft.Value = 999
-                  end
-               end
-            end)
-            wait(0.5) -- Run every 0.5 seconds to reduce lag
+         connections.antiKick = LocalPlayer.Kicking:Connect(function()
+            return false
          end)
       else
-         if infAmmoConnection then
-            infAmmoConnection:Disconnect()
-            infAmmoConnection = nil
+         if connections.antiKick then
+            connections.antiKick:Disconnect()
+            connections.antiKick = nil
          end
       end
    end,
 })
 
-local TriggerBotToggle = MainTab:CreateToggle({
-   Name = "🔫 Trigger Bot",
+local AutoRespawnToggle = MiscTab:CreateToggle({
+   Name = "🔄 Auto Respawn",
    CurrentValue = false,
-   Flag = "TriggerBot",
+   Flag = "AutoRespawn",
    Callback = function(Value)
-      triggerBotEnabled = Value
       if Value then
-         triggerBotConnection = game:GetService("RunService").RenderStepped:Connect(function()
-            local target = getTargetAtCrosshair()
-            if target then
-               clickMouse()
-               wait(0.1) -- Prevent spam clicking
-            end
+         connections.autoRespawn = LocalPlayer.CharacterRemoving:Connect(function()
+            wait(0.1)
+            LocalPlayer:LoadCharacter()
          end)
       else
-         if triggerBotConnection then
-            triggerBotConnection:Disconnect()
-            triggerBotConnection = nil
+         if connections.autoRespawn then
+            connections.autoRespawn:Disconnect()
+            connections.autoRespawn = nil
          end
       end
    end,
 })
 
-local SilentAimToggle = MainTab:CreateToggle({
-   Name = "🤫 Silent Aim",
-   CurrentValue = false,
-   Flag = "SilentAim",
-   Callback = function(Value)
-      silentAimEnabled = Value
-      if Value then
-         silentAimConnection = game:GetService("UserInputService").InputBegan:Connect(function(input, gameProcessed)
-            if gameProcessed then return end
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-               local target = getClosestPlayer()
-               if target and target.Character and target.Character:FindFirstChild(targetPart) then
-                  -- Silent aim - redirect shot to target without moving camera
-                  local mouse = game.Players.LocalPlayer:GetMouse()
-                  local targetPosition = target.Character[targetPart].Position
-                  
-                  -- Hook mouse.Hit temporarily
-                  spawn(function()
-                     local originalHit = mouse.Hit
-                     mouse.Hit = CFrame.new(targetPosition)
-                     wait(0.1)
-                     mouse.Hit = originalHit
-                  end)
-               end
-            end
-         end)
-      else
-         if silentAimConnection then
-            silentAimConnection:Disconnect()
-            silentAimConnection = nil
-         end
+-- Cleanup function
+local function cleanup()
+   for _, connection in pairs(connections) do
+      if connection then
+         connection:Disconnect()
       end
-   end,
-})
+   end
+   
+   if fovCircle then
+      fovCircle:Remove()
+   end
+   
+   -- Restore original values
+   local humanoid = getHumanoid()
+   if humanoid then
+      if originalValues.walkSpeed then
+         humanoid.WalkSpeed = originalValues.walkSpeed
+      end
+      if originalValues.jumpPower then
+         humanoid.JumpPower = originalValues.jumpPower
+      end
+   end
+end
 
-local NoRecoilToggle = MainTab:CreateToggle({
-   Name = "🎯 No Recoil",
-   CurrentValue = false,
-   Flag = "NoRecoil",
-   Callback = function(Value)
-      -- No recoil implementation would go here
-      print("No Recoil:", Value)
-   end,
-})
-
-local NoSpreadToggle = MainTab:CreateToggle({
-   Name = "🎯 No Spread",
-   CurrentValue = false,
-   Flag = "NoSpread",
-   Callback = function(Value)
-      -- No spread implementation would go here
-      print("No Spread:", Value)
-   end,
-})
+-- Cleanup on game close
+game:GetService("Players").PlayerRemoving:Connect(function(player)
+   if player == LocalPlayer then
+      cleanup()
+   end
+end)
 
 -- Set default ESP settings
 ESP.BoxType = "Corner Box Esp"
 ESP.TracerPosition = "Bottom"
+
+print("AktusHUB v1.1 loaded successfully!")
