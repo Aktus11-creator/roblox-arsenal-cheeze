@@ -31,7 +31,7 @@ game:GetService("RunService").Heartbeat:connect(function(step)if flying and c an
 
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/bitef4/Recode/main/UI/Kavo_1.lua"))()
-local Window = Library.CreateLib("AktusHUB | Arsenal | v1.7 ", "BlackTheme")
+local Window = Library.CreateLib("AktusHUB | Arsenal | v1.7 ", "BlueTheme")
 
 local Welcome = Window:NewTab("Main")
 local MainSection = Welcome:NewSection("Welcome To AktusTech | " .. game.Players.LocalPlayer.Name)
