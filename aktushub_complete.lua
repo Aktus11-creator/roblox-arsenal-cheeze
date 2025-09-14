@@ -502,34 +502,7 @@ local TriggerBotToggle = CombatTab:CreateToggle({
    end,
 })
 
--- Improved Silent Aim using remote hooking
-local function hookRemotes()
-   local mt = getrawmetatable(game)
-   local oldNamecall = mt.__namecall
-   
-   setreadonly(mt, false)
-   mt.__namecall = function(self, ...)
-      local method = getnamecallmethod()
-      local args = {...}
-      
-      if method == "FireServer" and settings.combat.silentAim then
-         local target = getClosestPlayer()
-         if target and target.Character and target.Character:FindFirstChild(settings.aimbot.targetPart) then
-            -- Modify the first Vector3 argument (usually the target position)
-            for i, arg in ipairs(args) do
-               if typeof(arg) == "Vector3" then
-                  args[i] = target.Character[settings.aimbot.targetPart].Position
-                  break
-               end
-            end
-         end
-      end
-      
-      return oldNamecall(self, unpack(args))
-   end
-   setreadonly(mt, true)
-end
-
+-- Simplified Silent Aim (safer approach)
 local SilentAimToggle = CombatTab:CreateToggle({
    Name = "🤫 Silent Aim",
    CurrentValue = false,
@@ -537,7 +510,28 @@ local SilentAimToggle = CombatTab:CreateToggle({
    Callback = function(Value)
       settings.combat.silentAim = Value
       if Value then
-         safeCall(hookRemotes)
+         connections.silentAim = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed then return end
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+               local target = getClosestPlayer()
+               if target and target.Character and target.Character:FindFirstChild(settings.aimbot.targetPart) then
+                  -- Simple approach: briefly aim at target when shooting
+                  local camera = workspace.CurrentCamera
+                  local originalCFrame = camera.CFrame
+                  local targetPosition = target.Character[settings.aimbot.targetPart].Position
+                  local targetCFrame = CFrame.lookAt(camera.CFrame.Position, targetPosition)
+                  
+                  camera.CFrame = targetCFrame
+                  wait(0.01) -- Very brief aim
+                  camera.CFrame = originalCFrame
+               end
+            end
+         end)
+      else
+         if connections.silentAim then
+            connections.silentAim:Disconnect()
+            connections.silentAim = nil
+         end
       end
    end,
 })
