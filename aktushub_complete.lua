@@ -7,7 +7,7 @@ CoreGui:SetCore("SendNotification", {
 
 game:GetService("StarterGui"):SetCore("SendNotification", {
   Title = "Modify By:",
-  Text = "AdvancedFalling Team",
+  Text = "AktusFalling Team",
   Icon = "rbxthumb://type=Asset&id=13508183954&w=150&h=150",
   Duration = 8,
 })
@@ -31,10 +31,10 @@ game:GetService("RunService").Heartbeat:connect(function(step)if flying and c an
 
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/bitef4/Recode/main/UI/Kavo_1.lua"))()
-local Window = Library.CreateLib("CHEATER.FUN | Arsenal | v1.6 ", "BlueTheme")
+local Window = Library.CreateLib("AktusHUB | Arsenal | v1.7 ", "BlackTheme")
 
 local Welcome = Window:NewTab("Main")
-local MainSection = Welcome:NewSection("Welcome To AdvanceTech | " .. game.Players.LocalPlayer.Name)
+local MainSection = Welcome:NewSection("Welcome To AktusTech | " .. game.Players.LocalPlayer.Name)
 
 local HitboxSection = Welcome:NewSection("> Hitbox Settings <")
 
@@ -334,7 +334,7 @@ end)
 
 
 local Gun = Window:NewTab("Gun")
-local GunmodsSection = Gun:NewSection("> Overpower Gun <")
+local GunmodsSection = Gun:NewSection("> OP Gun <")
 
 GunmodsSection:NewToggle("Infinite Ammo v1", "?", function(v)
     game:GetService("ReplicatedStorage").wkspc.CurrentCurse.Value = v and "Infinite Ammo" or ""
@@ -650,12 +650,12 @@ PlayerSection:NewLabel("> Object Teleport <")
 local autoHealEnabled = false
 local autoAmmoEnabled = false
 
-PlayerSection:NewToggle("DeadHP (AutoHeal)", "MMSVon made this", function(enabled)
+PlayerSection:NewToggle("DeadHP (AutoHeal)", function(enabled)
     autoHealEnabled = enabled
     managePickups()
 end)
 
-PlayerSection:NewToggle("DeadAmmo (Inf-Ammo)", "MMSVon made this", function(enabled)
+PlayerSection:NewToggle("DeadAmmo (Inf-Ammo)", function(enabled)
     autoAmmoEnabled = enabled
     managePickups()
 end)
@@ -691,7 +691,7 @@ PlayerSection:NewTextBox('TimeScale', '?', function(TimeScaleFR)
 end)
 PlayerSection:NewLabel("> Misc <")
 
-PlayerSection:NewSlider("FOV Arsenal", "?", 120, 0, function(num)
+PlayerSection:NewSlider("FOV", "?", 120, 0, function(num)
   game:GetService("Players").LocalPlayer.Settings.FOV.Value = num
 end)
 local isNoClipEnabled = false
@@ -939,18 +939,10 @@ local function enableParticles()
     end
   end
   
-  Extra:NewToggle("Mees up your screen lol", "?", function(state)
-    if state then
-      enableParticles()
-    else
-      disableParticles()
-    end
-  end)
-  
 
 
 
-Extra:NewLabel("Chat") -- fun i guess
+Extra:NewLabel("Chat Tags") 
 		
 Extra:NewToggle("IsChad", "?",function(x)
   if game.Players.LocalPlayer:FindFirstChild('IsChad') then
@@ -1349,7 +1341,7 @@ Section:NewButton("Rejoin Server", "?", function()
 end)
 
 local keybindSection = Setting:NewSection("> Keybind <")
-keybindSection:NewKeybind("Close UI", "Toggle UI", Enum.KeyCode.LeftControl, function()
+keybindSection:NewKeybind("Close UI", "Toggle UI", Enum.KeyCode.Insert, function()
   Library:ToggleUI()
 end)
 
@@ -1357,14 +1349,10 @@ end)
 
 local Credit = Window:NewTab("Credits")
 local Section = Credit:NewSection("Credits")
-local Section = Credit:NewSection("Script Developed by: AdvanceFalling Team")
-Section:NewDropdown("Developer", "Dev", {"YellowGreg", "WspBoy12", "MMSVon", "ShadowClark", "Frostbite"}, function(currentDeveloper)
+local Section = Credit:NewSection("Script Developed by: AktusFalling Team")
+Section:NewDropdown("Developer", "Dev", {"Aktus1_1", "WspBoy12", "MMSVon", "ShadowClark", "Frostbite"}, function(currentDeveloper)
     local creations = {
-        YellowGreg = "Owner",
-        WspBoy12 = "Head Developer",
-        MMSVon = "Head Developer",
-        ShadowClark = "Head Developer",
-        Frostbite = "Head Developer",
+        Aktus1_1 = "Owner",
     }
     print(currentDeveloper .. " created " .. creations[currentDeveloper])
 end)
